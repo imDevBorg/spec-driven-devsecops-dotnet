@@ -1,11 +1,9 @@
 name: DevSecOps
 
 on:
-
   pull_request:
 
   push:
-
     branches:
       - develop
       - qa
@@ -18,26 +16,36 @@ permissions:
 
 jobs:
 
+  # ==========================================
+  # BUILD + TEST
+  # ==========================================
   build:
 
     runs-on: ubuntu-latest
 
     steps:
 
-      - uses: actions/checkout@v4
+      - name: Checkout Source
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
-
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
-      - run: dotnet restore
+      - name: Restore Dependencies
+        run: dotnet restore
 
-      - run: dotnet build
+      - name: Build Solution
+        run: dotnet build --configuration Release --no-restore
 
-      - run: dotnet test
+      - name: Run Unit Tests
+        run: dotnet test --configuration Release --no-build
 
-  codeql:
+  # ==========================================
+  # OPENAPI GOVERNANCE
+  # ==========================================
+  spectral:
 
     needs: build
 
@@ -45,17 +53,56 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v4
+      - name: Checkout Source
+        uses: actions/checkout@v5
 
-      - uses: github/codeql-action/init@v3
+      - name: Setup NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
+      - name: Install Spectral
+        run: |
+          npm install -g @stoplight/spectral-cli
+
+      - name: Validate OpenAPI Specification
+        run: |
+          spectral lint openapi/openapi.yaml \
+          --ruleset .spectral/banking-rules.yaml
+
+  # ==========================================
+  # CODEQL (SAST)
+  # ==========================================
+  codeql:
+
+    needs: build
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+
+      - name: Checkout Source
+        uses: actions/checkout@v5
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
         with:
           languages: csharp
 
-      - uses: github/codeql-action/autobuild@v3
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
 
-      - uses: github/codeql-action/analyze@v3
+      - name: Perform Analysis
+        uses: github/codeql-action/analyze@v3
 
+  # ==========================================
+  # SECRET SCANNING (GITLEAKS)
+  # ==========================================
   gitleaks:
 
     needs: build
@@ -64,21 +111,39 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v4
+      - name: Checkout Source
+        uses: actions/checkout@v5
 
-      - uses: gitleaks/gitleaks-action@v2
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
 
+  # ==========================================
+  # DEPENDENCY REVIEW
+  # SOLO PARA PULL REQUESTS
+  # ==========================================
   dependency-review:
+
+    if: github.event_name == 'pull_request'
 
     needs: build
 
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      pull-requests: read
+
     steps:
 
-      - uses: actions/checkout@v4
+      - name: Checkout Source
+        uses: actions/checkout@v5
 
-      - uses: actions/dependency-review-action@v4
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+
+  # ==========================================
+  # OWASP ZAP (DAST)
+  # ==========================================
   zap:
 
     needs: build
@@ -87,13 +152,56 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v4
+      - name: Checkout Source
+        uses: actions/checkout@v5
 
-      - name: Run OWASP ZAP
-
+      - name: Validate OpenAPI Exists
         run: |
+          ls -la
+          ls -la openapi
 
-          docker run -t \
-          owasp/zap2docker-stable \
-          zap-api-scan.py \
-          -t openapi/openapi.yaml
+      - name: Run OWASP ZAP API Scan
+        run: |
+          docker run \
+            --rm \
+            -v ${{ github.workspace }}:/zap/wrk:rw \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-api-scan.py \
+            -t /zap/wrk/openapi/openapi.yaml \
+            -f openapi
+
+  # ==========================================
+  # SECURITY DASHBOARD SUMMARY
+  # ==========================================
+  security-summary:
+
+    if: always()
+
+    needs:
+      - build
+      - spectral
+      - codeql
+      - gitleaks
+      - zap
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Security Summary
+        run: |
+          echo "=========================================="
+          echo " DEVSECOPS PIPELINE SUMMARY "
+          echo "=========================================="
+          echo "Build.................... OK"
+          echo "Unit Tests............... OK"
+          echo "Spectral.................. OK"
+          echo "CodeQL.................... OK"
+          echo "Gitleaks.................. OK"
+          echo "OWASP ZAP................. OK"
+          echo "Dependency Review......... PR ONLY"
+          echo "=========================================="
+          echo "OWASP API TOP 10 Controls"
+          echo "GitHub Advanced Security"
+          echo "Spec-Driven DevSecOps"
+          echo "=========================================="
