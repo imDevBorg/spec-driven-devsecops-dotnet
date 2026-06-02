@@ -1,0 +1,99 @@
+name: DevSecOps
+
+on:
+
+  pull_request:
+
+  push:
+
+    branches:
+      - develop
+      - qa
+      - main
+
+permissions:
+  security-events: write
+  actions: read
+  contents: read
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+
+        with:
+          dotnet-version: 8.0.x
+
+      - run: dotnet restore
+
+      - run: dotnet build
+
+      - run: dotnet test
+
+  codeql:
+
+    needs: build
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+
+        with:
+          languages: csharp
+
+      - uses: github/codeql-action/autobuild@v3
+
+      - uses: github/codeql-action/analyze@v3
+
+  gitleaks:
+
+    needs: build
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: gitleaks/gitleaks-action@v2
+
+  dependency-review:
+
+    needs: build
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/dependency-review-action@v4
+  zap:
+
+    needs: build
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - name: Run OWASP ZAP
+
+        run: |
+
+          docker run -t \
+          owasp/zap2docker-stable \
+          zap-api-scan.py \
+          -t openapi/openapi.yaml

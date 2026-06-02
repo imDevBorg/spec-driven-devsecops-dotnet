@@ -1,0 +1,28 @@
+extends:
+  - spectral:oas
+
+rules:
+
+  jwt-required:
+    description: JWT obligatorio
+    severity: error
+
+    given: $.paths[*][*]
+
+    then:
+      field: security
+      function: truthy
+
+  https-required:
+
+    description: HTTPS obligatorio
+
+    severity: error
+
+    given: $.servers[*].url
+
+    then:
+      function: pattern
+
+      functionOptions:
+        match: "^https://"
