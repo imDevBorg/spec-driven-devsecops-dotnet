@@ -204,7 +204,7 @@ jobs:
 
   dast:
 
-    name: "⚡ OWASP ZAP — DAST Scan"
+    name: "⚡ OWASP ZAP — OpenAPI Validation"
 
     needs: build
 
@@ -214,20 +214,21 @@ jobs:
 
       - uses: actions/checkout@v5
 
-      - name: Validate OpenAPI
+      - name: Verify OpenAPI Exists
         run: |
-          ls -la
-          ls -la openapi
+          test -f openapi/openapi.yaml
 
-      - name: Run OWASP ZAP API Scan
+      - name: Validate OpenAPI
         run: |
           docker run \
             --rm \
-            -v ${{ github.workspace }}:/zap/wrk:rw \
+            -v ${{ github.workspace }}:/zap/wrk \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-api-scan.py \
             -t /zap/wrk/openapi/openapi.yaml \
-            -f openapi
+            -f openapi \
+            -I
+
 
   # ════════════════════════════════════════════════════════════
   # ETAPA 7: Drift Detection

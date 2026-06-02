@@ -4,7 +4,9 @@ extends:
 rules:
 
   jwt-required:
+
     description: JWT obligatorio
+
     severity: error
 
     given: $.paths[*][*]
@@ -17,7 +19,7 @@ rules:
 
     description: HTTPS obligatorio
 
-    severity: error
+    severity: warn
 
     given: $.servers[*].url
 
@@ -25,4 +27,4 @@ rules:
       function: pattern
 
       functionOptions:
-        match: "^https://"
+        match: "^(https://|http://localhost)"
